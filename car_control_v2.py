@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 import curses
 #import PCA9685 as SDH
-import RPi.GPIO as GPIO
+import pigpio
 from multiprocessing import Process, Value, Array, Event, Pipe 
 from multiprocessing import Queue as MpQueue
 import io 
@@ -19,7 +19,8 @@ import os
 DEBUG = True
 ##FIX
 #PCA9685_STUB = False
-
+pigpio.exceptions = False
+pi = pigpio.pi()
 
 # define the keyboard inputs that we accept for driving... feel free to change
 STOP_VEHICLE = ord(' ')
@@ -53,10 +54,10 @@ def keyboard_input_thread (screen, kbd_queue, msg_queue):
             ch_text = 'Keyboard Action: QUIT'
         else:
             ch_text = 'Keyboard Action: UNKNOWN' 
-            msg_queue.put_nowait ([1, 0, ch_text])
+            msg_queue.put_nowait([1, 0, ch_text])
         # and for all cases, queue the character(s) 
         try:
-            kbd_queue.put_nowait (ch)
+            kbd_queue.put_nowait(ch)
         except queue.Full:
             #incase we have limit on queue size
             pass
@@ -210,21 +211,36 @@ class VehicleLogic:
 # a wrapper for the steering and motor
 # encapsulates details of how we set the motor and steering via the Servo hat 
 class MotorSteeringDriver():
+    """def set_servo_pulse(channel, pulse):
+        pulse_length = 1000000    # 1,000,000 us per second
+        pulse_length //= 60       # 60 Hz
+        print('{0}us per period'.format(pulse_length))
+        pulse_length //= 4096     # 12 bits of resolution
+        print('{0}us per bit'.format(pulse_length))
+        pulse *= 1000
+        pulse //= pulse_length
+        pwm.set_pwm(channel, 0, pulse)"""
     
     #### TO BE FIXED ###
     def __init__(self, msg_queue):
         # in case we need to log something to the terminal display 
         self.msg_queue = msg_queue
-        self.GPIO_pin = 26
         # for the steering servo, channel 
-        self.STEERING_SERVO_CHANNEL = 0 
+        self.STEERING_SERVO_PIN= 25
         # speed controller, channel 3 
-        self.ESC_SERVO_CHANNEL = 3
+        self.ESC_SERVO_PIN = 27
+        
         # Initialize the Hat
+        self.PWM_FREQ_50_HZ = 50
         ##FIX
-        if not PCA9685_STUB:
-            self.pwm = SDH.PCA9685(self.SDH_I2C_ADDRESS, debug=False)
+        #if not PCA9685_STUB:
+            #self.pwm = SDH.PCA9685(self.SDH_I2C_ADDRESS, debug=False)
             #self.pwm.setPWMFreq(self.PWM FREQ_50_HZ)
+        pi.set_mode(self.STEERING_SERVO_PIN, pigpio.OUTPUT) 
+        pi.set_mode(self.ESC_SERVO_PIN, pigpio.OUTPUT)
+        self.pwm = pi.set_PWM_frequency(self.STEERING_SERVO_PIN, self.PWM_FREQ_50_HZ)
+
+        
         # define the three set-points for the ESC 
         self.NEUTRAL_ZERO_POINT = 1500
         self.MAX_FWD_POINT = 2000
@@ -242,15 +258,18 @@ class MotorSteeringDriver():
         self.STEERING_GAIN = self.STEERING_PLUS_MINUS / 1.0
         
         # also lets define some restrictions on the speed and steering 
-        self.STEERING_CLAMP [-1.0, 1.0]
+        self.STEERING_CLAMP = [-1.0, 1.0]
         self.SPEED_CLAMP = [-0.2, 0.2]
         
         # and lets center things...
         #FIX
-        if not PCA9685_STUB:
+        #if not PCA9685_STUB:
         
-            self.pwm.setServoPulse (self.STEERING_SERVO_CHANNEL, self.STEERING_CENTER) 
-            self.pwm.setServoPulse (self.ESC_SERVO_CHANNEL, self.NEUTRAL_ZERO_POINT)
+        
+        #    self.pwm.setServoPulse (self.STEERING_SERVO_CHANNEL, self.STEERING_CENTER) 
+        #    self.pwm.setServoPulse (self.ESC_SERVO_CHANNEL, self.NEUTRAL_ZERO_POINT)
+        pi.set_servo_pulsewidth(self.STEERING_SERVO_PIN, self.STEERING_CENTER)
+        pi.set_servo_pulsewidth(self.ESC_SERVO_PIN, self.NEUTRAL_ZERO_POINT)
         # and track the current speed and steering... should not be needed here 
         self.current_speed = 0.0 
         self.current_steering = 0.0
@@ -276,8 +295,9 @@ class MotorSteeringDriver():
             # reverse
             pwm_speed_pulse = int(speed * self.REV_SPEED_GAIN + self.NEUTRAL_ZERO_POINT)
         # and now set the actual speed via the Servo driver hat
-        if not PCA9685_STUB:
-            self.pwm.setServoPulse (self.ESC_SERVO_CHANNEL, pwm_speed_pulse)
+        #if not PCA9685_STUB:
+        #   self.pwm.setServoPulse (self.ESC_SERVO_CHANNEL, pwm_speed_pulse)
+        pi.set_servo_pulsewidth(self.ESC_SERVO_PIN, pwm_speed_pulse)
         self.msg_queue.put_nowait([6, 0, 'Motor Speed: %d' % pwm_speed_pulse])
             
     #steering should be between +/- 1.0
@@ -291,8 +311,9 @@ class MotorSteeringDriver():
         pwm_steering_pulse = int(steering * self.STEERING_GAIN + self.STEERING_CENTER)
         # and now set the actual steering via the Servo driver hat
         #FIX
-        if not PCA9685_STUB:
-            self.pwm.setServoPulse (self.STEERING_SERVO_CHANNEL, pwm_steering_pulse)
+        #if not PCA9685_STUB:
+        #    self.pwm.setServoPulse (self.STEERING_SERVO_CHANNEL, pwm_steering_pulse)
+        pi.set_servo_pulsewidth(self.STEERING_SERVO_PIN, pwm_steering_pulse)
         self.msg_queue.put_nowait([7, 0, 'Steering Angle: %d' % pwm_steering_pulse])
         
     def stop(self):
