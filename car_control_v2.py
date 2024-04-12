@@ -15,7 +15,7 @@ from multiprocessing import Process, Value, Array, Event, Pipe
 from multiprocessing import Queue as MpQueue
 import io 
 import os
-
+from save_capture import *
 DEBUG = True
 ##FIX
 #PCA9685_STUB = False

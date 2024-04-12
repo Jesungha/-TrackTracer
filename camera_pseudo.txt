@@ -1,0 +1,69 @@
+
+#runs as seperate thread
+def save_car_control_data_thread(ctrlqueue, run_flag):
+    
+    #single timestamped file for saving the data
+    control_file := open a timestamped control file name
+
+    #continuously store data to disk
+    loop until run_flag says stop
+
+        control data := ctrl_queue.retrieve_from_queue_blocking_with_wait()
+
+        if control_data has some data:
+            control_file.append_data_as_line_to_file(control_data)
+
+    close the control_file
+
+#run a seprate process for camera capture
+
+def camera_capture_process( shared_save_mem, shared_save_mem_flag, msg_queue, run_flag):
+    
+    using the picamera.Picamera() module:
+
+        initialize camera
+
+        custom_image_processor = CustomImageProcessor(shared_saved_mem, shared_save_mem_flag, msg_queue)
+
+        start_recording( custom_image_processor)
+
+        #and continously capture until told to stop
+        loop until run_flag says stop
+        
+            wait_recording for short time (say 1 sec)
+        
+        all done, shutdown the camera
+
+    
+
+#when we capture image data, we write it to shared meory for another process to access
+
+class SharedImageMemBuff():
+
+    array for image data storage - size IMG_IN_HEIGHT x IMG_IN_WIDTH x IMG_IN_CHANNELS
+    array for image timestamp storage
+
+#custom object output
+class CustomImageProcessor(camera, shared_save_mem, shared_save_mem_flag, msg_queue):
+
+    def write (new_image_frame):
+        if shared_save_mem_flag says we are ok to write to share memory:
+
+            shared_save_mem := new_image_frame
+
+            updated shared_save_mem_flag to show that new camera frame has been written
+
+    def flush():
+        #finished wait_recording
+        msg_queue.place_on_queue_non_blocking('helpful statistics on images processed')
+
+
+#run a seprerate process for saving image data to disk
+
+def save_image_process ( shared_save_mem, shared_save_mem_flag, msg_queue, run_flag):
+
+    update shared_save_mem_flag to request that a new camera frame can be written
+
+    #continously stroe image to disk
+    loop until run_flag says stop
+
